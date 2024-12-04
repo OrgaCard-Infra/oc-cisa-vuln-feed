@@ -12,12 +12,37 @@ jobs:
       contents: write
 
     steps:
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Download CISA Known Exploited Vulnerabilities Feed
-        run: curl -L "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json" > known_exploited_vulnerabilities.json
+      - name: Install jq
+        run: |
+          if ! command -v jq &> /dev/null; then
+            echo "jq not found, installing..."
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
+      - name: Download and validate CISA Feed
+        run: |
+          TEMP_FILE=$(mktemp)
+
+          HTTP_STATUS=$(curl -L -w "%{http_code}" "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json" -o "$TEMP_FILE")
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Error: HTTP status $HTTP_STATUS != 200"
+            rm "$TEMP_FILE"
+            exit 1
+          fi
+
+          if ! jq empty "$TEMP_FILE" 2>/dev/null; then
+            echo "Error: Invalid JSON format"
+            rm "$TEMP_FILE"
+            exit 1
+          fi
+
+          mv "$TEMP_FILE" known_exploited_vulnerabilities.json
 
       - name: Commit and Push if it has updates
         uses: stefanzweifel/git-auto-commit-action@v5
-
